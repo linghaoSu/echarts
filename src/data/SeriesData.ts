@@ -142,7 +142,7 @@ export interface DataCalculationInfo<SERIES_MODEL> {
 // -----------------------------
 let prepareInvertedIndex: (data: SeriesData) => void;
 let getId: (data: SeriesData, rawIndex: number) => string;
-let getIdNameFromStore: (data: SeriesData, dimIdx: number, dataIdx: number) => string;
+let getIdNameFromStore: (data: SeriesData, dimIdx: number[], dataIdx: number) => string;
 let normalizeDimensions: (dimensions: ItrParamDims) => Array<DimensionLoose>;
 let transferProperties: (target: SeriesData, source: SeriesData) => void;
 let cloneListForMapAndSample: (original: SeriesData) => SeriesData;
@@ -247,8 +247,8 @@ class SeriesData<
     // id or name is used on dynamic data, mapping old and new items.
     // When generating id from name, avoid repeat.
     private _nameRepeatCount: NameRepeatCount;
-    private _nameDimIdx: number;
-    private _idDimIdx: number;
+    private _nameDimIdx: number[] = [];
+    private _idDimIdx: number[] = [];
 
     private __wrappedMethods: string[];
 
@@ -306,7 +306,7 @@ class SeriesData<
                 dimensionInfo.coordDimIndex = 0;
             }
 
-            const otherDims = dimensionInfo.otherDims = dimensionInfo.otherDims || {};
+            // const otherDims = dimensionInfo.otherDims = dimensionInfo.otherDims || {};
             dimensionNames.push(dimensionName);
             dimensionInfos[dimensionName] = dimensionInfo;
             if ((emptyObj as any)[dimensionName] != null) {
@@ -316,11 +316,12 @@ class SeriesData<
             if (dimensionInfo.createInvertedIndices) {
                 invertedIndicesMap[dimensionName] = [];
             }
-            if (otherDims.itemName === 0) {
-                this._nameDimIdx = i;
+            if (dimensionInfo.type === 'ordinal') {
+                this._nameDimIdx.push(i);
             }
-            if (otherDims.itemId === 0) {
-                this._idDimIdx = i;
+
+            if (dimensionInfo.type === 'ordinal') {
+                this._idDimIdx.push(i);
             }
 
             if (__DEV__) {
@@ -740,13 +741,27 @@ class SeriesData<
         return name;
     }
 
-    private _getCategory(dimIdx: number, idx: number): OrdinalRawValue {
-        const ordinal = this._store.get(dimIdx, idx);
-        const ordinalMeta = this._store.getOrdinalMeta(dimIdx);
-        if (ordinalMeta) {
-            return ordinalMeta.categories[ordinal as OrdinalNumber];
+    private _getCategory(dimIdxList: number[], idx: number): OrdinalRawValue {
+        let ordinalRst = '';
+
+        const dimIdxCount = dimIdxList.length;
+
+        for (let i = 0; i < dimIdxCount; i++) {
+            const dimIdx = dimIdxList[i];
+            const ordinal = this._store.get(dimIdx, idx);
+            const ordinalMeta = this._store.getOrdinalMeta(dimIdx);
+            if (ordinalMeta) {
+                ordinalRst += ordinalMeta.categories[ordinal as OrdinalNumber];
+            }
+            else {
+                ordinalRst += ordinal;
+            }
+
+            ordinalRst += '_';
         }
-        return ordinal;
+
+        ordinalRst = ordinalRst.slice(0, -1);
+        return ordinalRst;
     }
 
     /**
@@ -1404,7 +1419,7 @@ class SeriesData<
         };
 
         getIdNameFromStore = function (
-            data: SeriesData, dimIdx: number, idx: number
+            data: SeriesData, dimIdx: number[], idx: number
         ): string {
             return convertOptionIdName(data._getCategory(dimIdx, idx), null);
         };
